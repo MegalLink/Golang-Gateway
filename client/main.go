@@ -14,7 +14,10 @@ import (
 	"megalink/gateway/client/types"
 	"megalink/gateway/logger"
 	"net/http"
+	"os"
+	"os/signal"
 	"runtime/debug"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -30,12 +33,6 @@ func main() {
 	}()
 	channel := channels.ProvideChannels[*types.ServerResponse]()
 
-	defer func() {
-		println("Closing channels")
-		channel.CloseChannels()
-	}()
-
-	global := "My global constant"
 	ctx := context.Background()
 
 	my_logger, err := logger.NewFastLogger()
@@ -79,7 +76,7 @@ func main() {
 	router := gin.New()
 
 	router.Use(LoggingMiddleware(my_logger))
-	router.Use(CustomRecoveryMiddleware(global))
+	router.Use(CustomRecoveryMiddleware(channel))
 
 	sv := service.Service{
 		Connection: connManager,
@@ -92,17 +89,50 @@ func main() {
 	})
 	router.GET("/transaction", sv.TransactionService)
 
-	router.Run(envVars.GinServerAdress)
+	srv := &http.Server{
+		Addr:    envVars.GinServerAdress,
+		Handler: router.Handler(),
+	}
+
+	go func() {
+		// service connections
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server with
+	// a timeout of 5 seconds.
+	quit := make(chan os.Signal, 1)
+	// kill (no param) default send syscall.SIGTERM
+	// kill -2 is syscall.SIGINT
+	// kill -9 is syscall. SIGKILL but can"t be catch, so don't need add it
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutdown Server ...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("Server Shutdown:", err)
+	}
+
+	select {
+	case <-ctx.Done():
+		channel.CloseChannels()
+		log.Println("timeout of 5 seconds.")
+	}
+	log.Println("Server exiting")
 }
 
-func CustomRecoveryMiddleware(message string) gin.HandlerFunc {
+func CustomRecoveryMiddleware(channel *channels.ChannelStruct[*types.ServerResponse]) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if r := recover(); r != nil {
 				// Log the panic with stack trace
 				log.Printf("Panic recovered: %s\n", r)
 				log.Printf("Stack trace: %s\n", debug.Stack())
-
+				channel.CloseChannels()
 				// Return a custom error response with the external message
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"message": "Internal Server Error",
@@ -117,6 +147,8 @@ func CustomRecoveryMiddleware(message string) gin.HandlerFunc {
 
 func LoggingMiddleware(logger logger.IFastLogger) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		id := uuid.New()
+		logger.WithPrefix(id.String())
 		// Start timer
 		start := time.Now()
 

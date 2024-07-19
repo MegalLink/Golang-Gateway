@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type Service struct {
@@ -21,9 +20,7 @@ type Service struct {
 }
 
 func (sv *Service) TransactionService(c *gin.Context) {
-	id := uuid.New()
-	sv.Logger.WithPrefix(id.String())
-	request := types.ServerRequest{MessageType: "TRANSACTION", ServerResponse: "OK", RequestID: id.String()}
+	request := types.ServerRequest{MessageType: "TRANSACTION", ServerResponse: "OK", RequestID: "TEST"}
 	sv.Logger.Info("Transaction Service Init Request", request)
 	res, err := sv.sendMessage(&request)
 	if err != nil {
@@ -31,6 +28,7 @@ func (sv *Service) TransactionService(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, err)
 	}
 
+	sv.Logger.Info("Transaction Service Response", res)
 	c.JSON(http.StatusOK, res)
 }
 
