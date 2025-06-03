@@ -91,7 +91,7 @@ func (logger *fastLogger) withAnyData(i interface{}) *zap.Logger {
 	return logger.zLogger.With(zap.Any("Data", i))
 }
 
-// New public function to set prefix dynamically
+// WithPrefix New public function to set prefix dynamically
 func (logger *fastLogger) WithPrefix(prefix string) {
 	// Update the internal prefix value
 	logger.prefix = prefix

@@ -38,8 +38,6 @@ func NewConnFactory(
 
 // GetConnection creates a new net.Conn.
 func (cf *ConnFactory) GetConnection() (net.Conn, error) {
-	println("\nGet connection")
-
 	net, err := cf.providePlainConnection()
 	if err != nil {
 		fmt.Printf("\n GetConnection |Connection failed %v", err)

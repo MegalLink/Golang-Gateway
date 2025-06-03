@@ -9,6 +9,9 @@ import (
 	"log"
 	"megalink/gateway/client/handler"
 	"megalink/gateway/client/types"
+	"megalink/gateway/client/utils"
+	"megalink/gateway/logger"
+	"megalink/gateway/shared"
 	"sync/atomic"
 	"time"
 )
@@ -17,7 +20,7 @@ const (
 	// Maximum heartbeat retries before performing a sign on.
 	maxHeartbeatRetries = 3
 	// DE39 echo test successfully response code.
-	deEchoSuccessfully = "OK"
+	deEchoSuccessfully = "00"
 	messageTypeEcho    = "ECHO"
 )
 
@@ -35,22 +38,24 @@ type IHeartbeatService interface {
 
 // HeartBeatService deals with heartbeat details of Datafast Connection.
 type HeartBeatService struct {
-	EchoTestResponse chan *types.ServerResponse
+	EchoTestResponse chan *shared.Transaction
 	LastAlert        time.Time
 	EchoRetries      uint64
 	echoError        chan error
 	EnvVars          *types.EnvVars
 	WaitResponseTime time.Duration
+	Logger           logger.IFastLogger
 }
 
 // NewHeartBeatService provides a new HeartBeatService with default config.
-func NewHeartBeatService(envVars *types.EnvVars) IHeartbeatService {
+func NewHeartBeatService(envVars *types.EnvVars, logger logger.IFastLogger) IHeartbeatService {
 	return &HeartBeatService{
-		EchoTestResponse: make(chan *types.ServerResponse),
+		EchoTestResponse: make(chan *shared.Transaction),
 		EchoRetries:      0,
 		echoError:        make(chan error, 1),
 		EnvVars:          envVars,
 		WaitResponseTime: time.Duration(envVars.HeartBeatResponseWaitSeconds) * time.Second,
+		Logger:           logger,
 	}
 }
 
@@ -60,7 +65,11 @@ func (hb *HeartBeatService) SendEchoTest(writer io.ReadWriter) {
 		fmt.Printf("\nSendEchoTest ======= echo retries %d", atomic.LoadUint64(&hb.EchoRetries))
 	}
 
-	request := types.ServerRequest{MessageType: messageTypeEcho, ServerResponse: deEchoSuccessfully}
+	request := &shared.Transaction{
+		MTI: messageTypeEcho,
+		F12: utils.GetTimeField("UTC"),
+		F13: utils.GetTimeField("UTC"),
+	}
 	// Encode heartbeat request to JSON
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -82,14 +91,13 @@ func (hb *HeartBeatService) SendEchoTest(writer io.ReadWriter) {
 	hb.checkEchoTestResponse(ctx)
 }
 
-func (hb *HeartBeatService) sendHeartBeatAlert(isDone bool) {
-	fmt.Printf("\nsendHeartBeatAlert | done %v", isDone)
+func (hb *HeartBeatService) sendHeartBeatAlert(isContextDone bool) {
+	hb.Logger.Warning("sendHeartBeatAlert", "isContextDone "+fmt.Sprint(isContextDone))
 
 	atomic.AddUint64(&hb.EchoRetries, 1)
 	if atomic.LoadUint64(&hb.EchoRetries) == maxHeartbeatRetries {
 		atomic.SwapUint64(&hb.EchoRetries, 0)
-		fmt.Printf("\nEcho test failed 3 times %v", isDone)
-
+		hb.Logger.Error("sendHeartBeatAlert", "Echo test failed 3 times "+fmt.Sprint(isContextDone))
 		hb.sendHeartbeatError(ErrHeartbeat)
 	}
 }
@@ -116,10 +124,12 @@ func (hb *HeartBeatService) checkEchoTestResponse(ctx context.Context) {
 	}
 }
 
-func (hb *HeartBeatService) checkEchoResponse(res *types.ServerResponse) {
-	fmt.Printf("\ncheckEchoResponse | response %v ", res)
+func (hb *HeartBeatService) checkEchoResponse(res *shared.Transaction) {
+	if hb.EnvVars.ShowEcho {
+		fmt.Printf("\ncheckEchoResponse | response %v ", res)
+	}
 
-	if res.ServerResponse != deEchoSuccessfully {
+	if res.F39 != deEchoSuccessfully {
 		hb.sendHeartBeatAlert(false)
 		return
 	}
@@ -128,13 +138,16 @@ func (hb *HeartBeatService) checkEchoResponse(res *types.ServerResponse) {
 
 // HandleHeartBeatResponse handles echo test response from Datafast.
 func (hb *HeartBeatService) HandleHeartBeatResponse(next handler.MessageHandlerFunc) handler.MessageHandlerFunc {
-	return func(conn io.ReadWriter, response *types.ServerResponse) error {
+	return func(conn io.ReadWriter, response *shared.Transaction) error {
 		// if is not type echo send to next handler
-		if response.MessageType != messageTypeEcho {
+		if response.MTI != messageTypeEcho {
 			return next(conn, response)
 		}
-		fmt.Printf("\nHandleHeartBeatResponse | response %v ", response)
-		// send echo test response to a listener goroutine so it goes to checkEchoResponse
+
+		if hb.EnvVars.ShowEcho {
+			fmt.Printf("\nHandleHeartBeatResponse | response %v ", response)
+		}
+
 		select {
 		case hb.EchoTestResponse <- response:
 		default:

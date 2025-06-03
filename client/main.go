@@ -7,12 +7,13 @@ import (
 	"megalink/gateway/client/channels"
 	"megalink/gateway/client/connection"
 	"megalink/gateway/client/handler"
-	"megalink/gateway/client/heartbeat"
+	heartbeatService "megalink/gateway/client/heartbeat"
 	"megalink/gateway/client/listener"
 	"megalink/gateway/client/service"
 	"megalink/gateway/client/sign"
 	"megalink/gateway/client/types"
 	"megalink/gateway/logger"
+	"megalink/gateway/shared"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,16 +32,16 @@ func main() {
 			fmt.Println("stacktrace from panic: \n" + string(debug.Stack()))
 		}
 	}()
-	channel := channels.ProvideChannels[*types.ServerResponse]()
+	channel := channels.ProvideChannels[*shared.Transaction]()
 
 	ctx := context.Background()
 
-	my_logger, err := logger.NewFastLogger()
+	myLogger, err := logger.NewFastLogger()
 	if err != nil {
 		println("Error")
 	}
 
-	my_logger.Info("Main", "")
+	myLogger.Info("Main", "start")
 	id := uuid.New()
 	fmt.Println(id.String())
 	// Define server address for health check and heartbeat
@@ -48,13 +49,13 @@ func main() {
 		GinServerAdress:              "localhost:8080",
 		FranchiseConnectionAdress:    "localhost:9090",
 		ShowEcho:                     false,
-		HeartSendBeatIntervalSeconds: 5,
-		HeartBeatResponseWaitSeconds: 6,
+		HeartSendBeatIntervalSeconds: 30,
+		HeartBeatResponseWaitSeconds: 30,
 	}
 
 	signService := sign.NewSignService(&envVars)
 	connFact := connection.NewConnFactory(&envVars)
-	heartbeat := heartbeat.NewHeartBeatService(&envVars)
+	heartbeat := heartbeatService.NewHeartBeatService(&envVars, myLogger)
 	connManager := connection.NewConnManager(signService, heartbeat, connFact, &envVars)
 	errHandler := handler.NewErrorHandler()
 	respHandler := handler.NewResponseHandler(ctx, channel)
@@ -65,29 +66,29 @@ func main() {
 		AddHandler(respHandler.HandleMessageResponse).
 		BuildChain()
 
-	// Listen DATAFAST response.
-	listener := listener.NewListener(connManager, dataFastHandler, errHandler, &envVars)
+	// Listen for response.
+	listenerService := listener.NewListener(connManager, dataFastHandler, errHandler, &envVars)
 	_ = connManager.SetupConnection(ctx)
 
 	// ctx must be a context.Background() to listen forever.
-	go listener.Listen(ctx)
+	go listenerService.Listen(ctx)
 
 	// Create a Gin router
 	router := gin.New()
 
-	router.Use(LoggingMiddleware(my_logger))
+	router.Use(LoggingMiddleware(myLogger))
 	router.Use(CustomRecoveryMiddleware(channel))
 
 	sv := service.Service{
 		Connection: connManager,
-		Logger:     my_logger,
+		Logger:     myLogger,
 		Channel:    channel,
 	}
 	// Health check endpoint
 	router.GET("/healthcheck", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "healthy"})
 	})
-	router.GET("/transaction", sv.TransactionService)
+	router.POST("/transaction", sv.TransactionService)
 
 	srv := &http.Server{
 		Addr:    envVars.GinServerAdress,
@@ -125,7 +126,7 @@ func main() {
 	log.Println("Server exiting")
 }
 
-func CustomRecoveryMiddleware(channel *channels.ChannelStruct[*types.ServerResponse]) gin.HandlerFunc {
+func CustomRecoveryMiddleware(channel *channels.ChannelStruct[*shared.Transaction]) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if r := recover(); r != nil {
@@ -167,7 +168,7 @@ func LoggingMiddleware(logger logger.IFastLogger) gin.HandlerFunc {
 				logger.Error("ERROR", e)
 			}
 		} else {
-			logger.Info("Loggin Middleware", fmt.Sprintf("%s %s %d %s %s\n", clientIP, method, path, statusCode, duration))
+			logger.Info("Loggin Middleware", fmt.Sprintf("Operation %s to: %s %s Response with Status Code: %d and Duration: %s", method, clientIP, path, statusCode, duration))
 		}
 	}
 }

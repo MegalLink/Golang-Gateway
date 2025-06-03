@@ -2,13 +2,13 @@ package handler
 
 import (
 	"io"
-	"megalink/gateway/client/types"
+	"megalink/gateway/shared"
 	"net"
 )
 
 // MessageHandlerFunc it's the function which performs the actual processing of the actual data going through every
 // handler.
-type MessageHandlerFunc func(io.ReadWriter, *types.ServerResponse) error
+type MessageHandlerFunc func(io.ReadWriter, *shared.Transaction) error
 
 // INetConn provides methods to deal with net.Conn.
 type INetConn interface {

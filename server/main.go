@@ -4,17 +4,13 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"log"
 	"math/rand"
+	"megalink/gateway/shared"
 	"net"
 	"time"
 )
-
-type ServerRequestResponse struct {
-	RequestID      string `json:"requestID"`
-	MessageType    string `json:"messageType"`
-	ServerResponse string `json:"serverResponse"`
-}
 
 func RandomZeroOrOne() int {
 	rand.Seed(time.Now().UnixNano()) // Seed the random number generator with current time
@@ -39,7 +35,7 @@ func handleConnection(conn net.Conn, done chan struct{}) {
 		}
 
 		// Decode request from JSON
-		var request ServerRequestResponse
+		var request shared.Transaction
 		err = json.Unmarshal(data[:n], &request)
 		if err != nil {
 			fmt.Println("Error decoding request:", err)
@@ -50,14 +46,13 @@ func handleConnection(conn net.Conn, done chan struct{}) {
 
 		//time.Sleep(8 * time.Second)
 
-		responses := []string{"OK", "OK", "OK", "FAILED"}
+		responses := []string{"00", "00", "00", "00"}
 
 		// Create server response
-		response := ServerRequestResponse{
-			ServerResponse: responses[RandomZeroOrOne()],
-			MessageType:    request.MessageType,
-			RequestID:      request.RequestID,
-		}
+		response := request
+		response.F39 = responses[RandomZeroOrOne()]
+		id, _ := uuid.NewV7()
+		response.F38 = id.String()[0:6]
 
 		// Encode response as JSON
 		responseData, err := json.Marshal(response)

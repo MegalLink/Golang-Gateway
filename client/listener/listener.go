@@ -9,6 +9,7 @@ import (
 	"io"
 	"megalink/gateway/client/handler"
 	"megalink/gateway/client/types"
+	"megalink/gateway/shared"
 	"time"
 )
 
@@ -104,13 +105,12 @@ func (ls *Listener) Listen(ctx context.Context) {
 				}
 
 				// Decode server response from JSON
-				var serverResponse types.ServerResponse
+				var serverResponse shared.Transaction
 				if err := json.Unmarshal(bufferData.Bytes(), &serverResponse); err != nil {
 					done <- fmt.Errorf("failed to unmarshal server response: %w", err)
 					return
 				}
 
-				fmt.Println("\nReceived server response:", serverResponse.ServerResponse)
 				done <- ls.Handler(ls.Conn, &serverResponse)
 			}()
 

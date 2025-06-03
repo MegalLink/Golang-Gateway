@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"megalink/gateway/client/channels"
-	"megalink/gateway/client/types"
+	"megalink/gateway/shared"
 )
 
 type (
@@ -17,12 +17,12 @@ type (
 	ListenerResponseHandler struct {
 		// Ctx handles context.
 		Ctx     context.Context
-		Channel *channels.ChannelStruct[*types.ServerResponse]
+		Channel *channels.ChannelStruct[*shared.Transaction]
 	}
 )
 
 // NewResponseHandler provides an ResponseHandler.
-func NewResponseHandler(ctx context.Context, channel *channels.ChannelStruct[*types.ServerResponse]) ResponseHandler {
+func NewResponseHandler(ctx context.Context, channel *channels.ChannelStruct[*shared.Transaction]) ResponseHandler {
 	return &ListenerResponseHandler{
 		Ctx:     ctx,
 		Channel: channel,
@@ -31,11 +31,9 @@ func NewResponseHandler(ctx context.Context, channel *channels.ChannelStruct[*ty
 
 // HandleMessageResponse handles message response.
 func (lrh *ListenerResponseHandler) HandleMessageResponse(_ MessageHandlerFunc) MessageHandlerFunc {
-	return func(_ io.ReadWriter, response *types.ServerResponse) error {
-		fmt.Println("HandleMessageResponse", response)
-		// create a channel
-		idCh := response.RequestID
-		lrh.Channel.Set(channels.CHMessageFields[*types.ServerResponse]{
+	return func(_ io.ReadWriter, response *shared.Transaction) error {
+		idCh := fmt.Sprintf("%s%s", response.F12, response.F13)
+		lrh.Channel.Set(channels.CHMessageFields[*shared.Transaction]{
 			Resp: response,
 			ID:   idCh,
 		})

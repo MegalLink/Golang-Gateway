@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"megalink/gateway/client/types"
+	"megalink/gateway/shared"
 )
 
 type (
@@ -27,17 +28,18 @@ func NewSignService(conf *types.EnvVars) ISignService {
 
 // SendSignOn sends a SignOn request to the franchise.
 func (sh *SignService) SendSignOn(writer io.Writer) error {
-	println("Send sign on")
-	signOnData := &types.ServerRequest{MessageType: "SIGN", ServerResponse: "OK"}
+	signOnData := &shared.Transaction{
+		MTI: "0200",
+		F12: "",
+		F13: "",
+	}
 	return sh.sendMessage(signOnData, writer)
 }
 
 func (sh *SignService) sendMessage(
-	signData *types.ServerRequest,
+	signData *shared.Transaction,
 	writer io.Writer,
 ) error {
-	println("Send sign on sendMessage")
-
 	// Encode heartbeat request to JSON
 	requestBytes, err := json.Marshal(signData)
 	if err != nil {

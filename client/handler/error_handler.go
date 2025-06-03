@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"megalink/gateway/client/types"
+	"megalink/gateway/shared"
 )
 
 type (
@@ -31,7 +31,7 @@ func (eh *ListenerErrorHandler) HandleError(ctx context.Context, err error) {
 
 // HandleMessageError notifies a message handler error to rollbar.
 func (eh *ListenerErrorHandler) HandleMessageError(next MessageHandlerFunc) MessageHandlerFunc {
-	return func(writer io.ReadWriter, data *types.ServerResponse) error {
+	return func(writer io.ReadWriter, data *shared.Transaction) error {
 		err := next(writer, data)
 		if err != nil {
 			fmt.Printf("\nHandleMessageError| %v", err)

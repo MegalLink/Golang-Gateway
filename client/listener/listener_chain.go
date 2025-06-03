@@ -3,7 +3,7 @@ package listener
 import (
 	"io"
 	"megalink/gateway/client/handler"
-	"megalink/gateway/client/types"
+	"megalink/gateway/shared"
 )
 
 // ListenerChain is a set of handler functions which will be applied to the messages flowing through that connection.
@@ -28,7 +28,7 @@ func (ch *ListenerChain) BuildChain() handler.MessageHandlerFunc {
 	return head
 }
 
-func doNothing(io.ReadWriter, *types.ServerResponse) error { return nil }
+func doNothing(io.ReadWriter, *shared.Transaction) error { return nil }
 
 // AddHandler appends a new handler to the handlers set.
 func (ch *ListenerChain) AddHandler(h handler.ListenerHandlerFunc) *ListenerChain {
